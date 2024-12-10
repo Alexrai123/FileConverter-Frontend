@@ -10,8 +10,8 @@ function App() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
       <div className="fixed top-4 right-4 z-50">
-        <Link to="/profile" className="p-2 rounded-full hover:bg-accent">
-          <User className="w-6 h-6" />
+        <Link to="/profile" className="p-3 rounded-full hover:bg-accent">
+          <User className="w-8 h-8" />
         </Link>
       </div>
       <Routes>
