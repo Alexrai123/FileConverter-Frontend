@@ -35,14 +35,24 @@ const FileConverter = () => {
     return VALID_CONVERSIONS[source]?.includes(target);
   };
 
+  const getConvertedFilename = (
+    originalName: string,
+    targetFormat: FileFormat,
+  ) => {
+    // Remove the original extension and add the new one
+    const nameWithoutExtension = originalName.split(".")[0];
+    return `${nameWithoutExtension}${targetFormat}`;
+  };
+
   const handleFileSelect = (files: FileList) => {
     setIsConverting(true);
 
     // Process each file
     Array.from(files).forEach((file) => {
+      const convertedFilename = getConvertedFilename(file.name, targetFormat);
       const newResult: ConversionResult = {
         id: Math.random().toString(36).substr(2, 9),
-        filename: file.name,
+        filename: convertedFilename,
         status: "pending",
       };
 
