@@ -5,24 +5,84 @@ import ConversionProgress from "./ConversionProgress";
 import ResultsList from "./ResultsList";
 import { FileFormat } from "./FormatDropdown";
 
+type ConversionStatus = "success" | "error" | "pending";
+
+interface ConversionResult {
+  id: string;
+  filename: string;
+  status: ConversionStatus;
+  error?: string;
+}
+
+const VALID_CONVERSIONS: Record<FileFormat, FileFormat[]> = {
+  ".txt": [".pdf", ".docx"],
+  ".docx": [".pdf", ".txt"],
+  ".csv": [".xlsx", ".json"],
+  ".xlsx": [".csv", ".json"],
+  ".json": [".xml", ".csv", ".xlsx"],
+  ".xml": [".json"],
+  ".pdf": [".txt", ".docx"],
+};
+
 const FileConverter = () => {
   const [sourceFormat, setSourceFormat] = useState<FileFormat>(".txt");
   const [targetFormat, setTargetFormat] = useState<FileFormat>(".pdf");
   const [progress, setProgress] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
+  const [results, setResults] = useState<ConversionResult[]>([]);
+
+  const isValidConversion = (source: FileFormat, target: FileFormat) => {
+    return VALID_CONVERSIONS[source]?.includes(target);
+  };
 
   const handleFileSelect = (files: FileList) => {
     setIsConverting(true);
-    // Simulate conversion progress
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress += 10;
-      setProgress(currentProgress);
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        setIsConverting(false);
-      }
-    }, 500);
+
+    // Process each file
+    Array.from(files).forEach((file) => {
+      const newResult: ConversionResult = {
+        id: Math.random().toString(36).substr(2, 9),
+        filename: file.name,
+        status: "pending",
+      };
+
+      setResults((prev) => [newResult, ...prev]);
+
+      // Simulate conversion progress
+      let currentProgress = 0;
+      const interval = setInterval(() => {
+        currentProgress += 10;
+        setProgress(currentProgress);
+
+        if (currentProgress >= 100) {
+          clearInterval(interval);
+          setIsConverting(false);
+          setProgress(0);
+
+          // Update result status based on conversion validity
+          setResults((prev) =>
+            prev.map((result) =>
+              result.id === newResult.id
+                ? {
+                    ...result,
+                    status: isValidConversion(sourceFormat, targetFormat)
+                      ? "success"
+                      : "error",
+                    error: isValidConversion(sourceFormat, targetFormat)
+                      ? undefined
+                      : `Cannot convert from ${sourceFormat} to ${targetFormat}`,
+                  }
+                : result,
+            ),
+          );
+        }
+      }, 500);
+    });
+  };
+
+  const handleDownload = (id: string) => {
+    // Handle file download logic here
+    console.log(`Downloading file with id: ${id}`);
   };
 
   return (
@@ -41,7 +101,7 @@ const FileConverter = () => {
         status={isConverting ? "Converting..." : "Ready to convert"}
         isActive={isConverting}
       />
-      <ResultsList />
+      <ResultsList results={results} onDownload={handleDownload} />
     </div>
   );
 };
