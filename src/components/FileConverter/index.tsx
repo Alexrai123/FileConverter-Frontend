@@ -4,6 +4,8 @@ import FormatSelection from "./FormatSelection";
 import ConversionProgress from "./ConversionProgress";
 import ResultsList from "./ResultsList";
 import { FileFormat } from "./FormatDropdown";
+import { convertFile, downloadFile } from "@/lib/api";
+import { useToast } from "@/components/ui/use-toast";
 
 type ConversionStatus = "success" | "error" | "pending";
 
@@ -12,6 +14,7 @@ interface ConversionResult {
   filename: string;
   status: ConversionStatus;
   error?: string;
+  downloadUrl?: string;
 }
 
 const VALID_CONVERSIONS: Record<FileFormat, FileFormat[]> = {
@@ -30,6 +33,7 @@ const FileConverter = () => {
   const [progress, setProgress] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
   const [results, setResults] = useState<ConversionResult[]>([]);
+  const { toast } = useToast();
 
   const isValidConversion = (source: FileFormat, target: FileFormat) => {
     return VALID_CONVERSIONS[source]?.includes(target);
@@ -39,16 +43,14 @@ const FileConverter = () => {
     originalName: string,
     targetFormat: FileFormat,
   ) => {
-    // Remove the original extension and add the new one
     const nameWithoutExtension = originalName.split(".")[0];
     return `${nameWithoutExtension}${targetFormat}`;
   };
 
-  const handleFileSelect = (files: FileList) => {
+  const handleFileSelect = async (files: FileList) => {
     setIsConverting(true);
 
-    // Process each file
-    Array.from(files).forEach((file) => {
+    for (const file of Array.from(files)) {
       const convertedFilename = getConvertedFilename(file.name, targetFormat);
       const newResult: ConversionResult = {
         id: Math.random().toString(36).substr(2, 9),
@@ -58,41 +60,93 @@ const FileConverter = () => {
 
       setResults((prev) => [newResult, ...prev]);
 
-      // Simulate conversion progress
-      let currentProgress = 0;
-      const interval = setInterval(() => {
-        currentProgress += 10;
-        setProgress(currentProgress);
+      try {
+        // Start progress simulation
+        let currentProgress = 0;
+        const interval = setInterval(() => {
+          currentProgress = Math.min(currentProgress + 10, 90);
+          setProgress(currentProgress);
+        }, 500);
 
-        if (currentProgress >= 100) {
-          clearInterval(interval);
-          setIsConverting(false);
-          setProgress(0);
+        // Actual conversion
+        const response = await convertFile(file, sourceFormat, targetFormat);
 
-          // Update result status based on conversion validity
-          setResults((prev) =>
-            prev.map((result) =>
-              result.id === newResult.id
-                ? {
-                    ...result,
-                    status: isValidConversion(sourceFormat, targetFormat)
-                      ? "success"
-                      : "error",
-                    error: isValidConversion(sourceFormat, targetFormat)
-                      ? undefined
-                      : `Cannot convert from ${sourceFormat} to ${targetFormat}`,
-                  }
-                : result,
-            ),
-          );
+        // Clear interval and set final progress
+        clearInterval(interval);
+        setProgress(100);
+
+        // Update result
+        setResults((prev) =>
+          prev.map((result) =>
+            result.id === newResult.id
+              ? {
+                  ...result,
+                  status: response.success ? "success" : "error",
+                  error: response.success ? undefined : response.message,
+                  downloadUrl: response.downloadUrl,
+                }
+              : result,
+          ),
+        );
+
+        if (response.success) {
+          toast({
+            title: "Conversion successful",
+            description: `${file.name} has been converted to ${targetFormat}`,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Conversion failed",
+            description: response.message,
+          });
         }
-      }, 500);
-    });
+      } catch (error) {
+        setResults((prev) =>
+          prev.map((result) =>
+            result.id === newResult.id
+              ? {
+                  ...result,
+                  status: "error",
+                  error: "Conversion failed. Please try again.",
+                }
+              : result,
+          ),
+        );
+
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to convert file. Please try again.",
+        });
+      }
+    }
+
+    setIsConverting(false);
+    setProgress(0);
   };
 
-  const handleDownload = (id: string) => {
-    // Handle file download logic here
-    console.log(`Downloading file with id: ${id}`);
+  const handleDownload = async (id: string) => {
+    const result = results.find((r) => r.id === id);
+    if (!result?.downloadUrl) return;
+
+    try {
+      const blob = await downloadFile(result.downloadUrl);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: "Failed to download the converted file. Please try again.",
+      });
+    }
   };
 
   return (
