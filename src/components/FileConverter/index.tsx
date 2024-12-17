@@ -60,6 +60,31 @@ const FileConverter = () => {
 
       setResults((prev) => [newResult, ...prev]);
 
+      // Check if conversion is valid
+      if (!isValidConversion(sourceFormat, targetFormat)) {
+        setResults((prev) =>
+          prev.map((result) =>
+            result.id === newResult.id
+              ? {
+                  ...result,
+                  status: "error",
+                  error: `Cannot convert from ${sourceFormat} to ${targetFormat}`,
+                }
+              : result,
+          ),
+        );
+
+        toast({
+          variant: "destructive",
+          title: "Invalid Conversion",
+          description: `Converting from ${sourceFormat} to ${targetFormat} is not supported.`,
+        });
+
+        setIsConverting(false);
+        setProgress(0);
+        return;
+      }
+
       try {
         // Start progress simulation
         let currentProgress = 0;
