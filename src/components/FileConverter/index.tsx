@@ -4,7 +4,7 @@ import FormatSelection from "./FormatSelection";
 import ConversionProgress from "./ConversionProgress";
 import ResultsList from "./ResultsList";
 import { FileFormat } from "./FormatDropdown";
-import { convertFile, downloadFile } from "@/lib/api";
+import { convertFile } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 
 type ConversionStatus = "success" | "error" | "pending";
@@ -14,7 +14,7 @@ interface ConversionResult {
   filename: string;
   status: ConversionStatus;
   error?: string;
-  downloadUrl?: string;
+  blob?: Blob;
 }
 
 const VALID_CONVERSIONS: Record<FileFormat, FileFormat[]> = {
@@ -68,8 +68,8 @@ const FileConverter = () => {
           setProgress(currentProgress);
         }, 500);
 
-        // Actual conversion
-        const response = await convertFile(file, sourceFormat, targetFormat);
+        // Simulated conversion
+        const blob = await convertFile(file, targetFormat);
 
         // Clear interval and set final progress
         clearInterval(interval);
@@ -81,26 +81,17 @@ const FileConverter = () => {
             result.id === newResult.id
               ? {
                   ...result,
-                  status: response.success ? "success" : "error",
-                  error: response.success ? undefined : response.message,
-                  downloadUrl: response.downloadUrl,
+                  status: "success",
+                  blob,
                 }
               : result,
           ),
         );
 
-        if (response.success) {
-          toast({
-            title: "Conversion successful",
-            description: `${file.name} has been converted to ${targetFormat}`,
-          });
-        } else {
-          toast({
-            variant: "destructive",
-            title: "Conversion failed",
-            description: response.message,
-          });
-        }
+        toast({
+          title: "Conversion successful",
+          description: `${file.name} has been converted to ${targetFormat}`,
+        });
       } catch (error) {
         setResults((prev) =>
           prev.map((result) =>
@@ -128,11 +119,10 @@ const FileConverter = () => {
 
   const handleDownload = async (id: string) => {
     const result = results.find((r) => r.id === id);
-    if (!result?.downloadUrl) return;
+    if (!result?.blob) return;
 
     try {
-      const blob = await downloadFile(result.downloadUrl);
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(result.blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = result.filename;
