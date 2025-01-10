@@ -8,6 +8,7 @@ import Login from "./components/auth/login";
 import Signup from "./components/auth/signup";
 import ForgotPassword from "./components/auth/forgot-password";
 import routes from "tempo-routes";
+import AdminPage from "./components/Admin/AdminPage";
 
 function App() {
   return (
@@ -22,7 +23,8 @@ function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/forgotpassword" element={<ForgotPassword />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Routes>
       {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
     </Suspense>

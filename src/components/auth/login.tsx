@@ -1,16 +1,47 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import apiClient from "@/api/apiClient";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic here
+
+    if (email === "admin@admin.com" && password === "admin") {
+      console.log("Admin login successful");
+      alert("Logged in as admin.");
+      navigate("/admin"); // Redirecționează la pagina admin
+      return;
+    }
+
+    try {
+      const response = await apiClient.post("/users/login", {
+        email,
+        password,
+      });
+      console.log("Login successful:", response.data);
+
+      // Salvează email-ul utilizatorului logat
+      localStorage.setItem("loggedInEmail", email);
+      navigate("/");
+    } catch (error) {
+      console.error("Login failed:", error);
+      alert("Invalid email or password.");
+    }
+  };
+
+  const handleLogin = () => {
+    // Salvează email-ul utilizatorului logat
+    localStorage.setItem("loggedInEmail", email);
+
+    // Redirecționează utilizatorul către Home
+    navigate("/home");
   };
 
   return (

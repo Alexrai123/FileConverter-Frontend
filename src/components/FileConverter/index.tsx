@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import DropZone from "./DropZone";
 import FormatSelection from "./FormatSelection";
 import ConversionProgress from "./ConversionProgress";
 import ResultsList from "./ResultsList";
 import { FileFormat } from "./FormatDropdown";
-import { convertFile } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
+import { incrementFilesConverted } from "@/api/apiClient";
+import { fetchUserProfile } from "@/api/apiClient";
+import { clearConversionHistory } from "@/api/apiClient";
 
 type ConversionStatus = "success" | "error" | "pending";
 
@@ -15,6 +17,16 @@ interface ConversionResult {
   status: ConversionStatus;
   error?: string;
   blob?: Blob;
+}
+
+interface UserProfile {
+  email: string;
+  subscriptionType: string;
+  price: number;
+  fileSizeLimit: number;
+  fileNumberLimitPerDay: number;
+  subscriptionStartDate: string;
+  nrOfFilesConvertedPerMonth: number;
 }
 
 const VALID_CONVERSIONS: Record<FileFormat, FileFormat[]> = {
@@ -30,10 +42,18 @@ const VALID_CONVERSIONS: Record<FileFormat, FileFormat[]> = {
 const FileConverter = () => {
   const [sourceFormat, setSourceFormat] = useState<FileFormat>(".txt");
   const [targetFormat, setTargetFormat] = useState<FileFormat>(".pdf");
+  const [profile, setProfile] = useState<UserProfile | null>(null); // `UserProfile` este tipul profilului
   const [progress, setProgress] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
   const [results, setResults] = useState<ConversionResult[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const savedResults = localStorage.getItem("conversionResults");
+    if (savedResults) {
+      setResults(JSON.parse(savedResults));
+    }
+  }, []);
 
   const isValidConversion = (source: FileFormat, target: FileFormat) => {
     return VALID_CONVERSIONS[source]?.includes(target);
@@ -41,103 +61,98 @@ const FileConverter = () => {
 
   const getConvertedFilename = (
     originalName: string,
-    targetFormat: FileFormat,
+    targetFormat: FileFormat
   ) => {
     const nameWithoutExtension = originalName.split(".")[0];
     return `${nameWithoutExtension}${targetFormat}`;
   };
 
-  const handleFileSelect = async (files: FileList) => {
-    setIsConverting(true);
+  const handleFileConversionSuccess = async (email: string) => {
+    try {
+      await incrementFilesConverted(email); // Apel către backend
 
-    for (const file of Array.from(files)) {
-      const convertedFilename = getConvertedFilename(file.name, targetFormat);
-      const newResult: ConversionResult = {
-        id: Math.random().toString(36).substr(2, 9),
-        filename: convertedFilename,
-        status: "pending",
-      };
+      // Fetch profil actualizat
+      const updatedProfile = await fetchUserProfile(email);
+      setProfile(updatedProfile);
 
-      setResults((prev) => [newResult, ...prev]);
-
-      // Check if conversion is valid
-      if (!isValidConversion(sourceFormat, targetFormat)) {
-        setResults((prev) =>
-          prev.map((result) =>
-            result.id === newResult.id
-              ? {
-                  ...result,
-                  status: "error",
-                  error: `Cannot convert from ${sourceFormat} to ${targetFormat}`,
-                }
-              : result,
-          ),
-        );
-
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated with the new file count.",
+      });
+    } catch (error: any) {
+      if (error.message === "File conversion limit reached.") {
         toast({
           variant: "destructive",
-          title: "Invalid Conversion",
-          description: `Converting from ${sourceFormat} to ${targetFormat} is not supported.`,
+          title: "Limit reached",
+          description: "You have reached your daily file conversion limit.",
         });
-
-        setIsConverting(false);
-        setProgress(0);
-        return;
-      }
-
-      try {
-        // Start progress simulation
-        let currentProgress = 0;
-        const interval = setInterval(() => {
-          currentProgress = Math.min(currentProgress + 10, 90);
-          setProgress(currentProgress);
-        }, 500);
-
-        // Simulated conversion
-        const blob = await convertFile(file, targetFormat);
-
-        // Clear interval and set final progress
-        clearInterval(interval);
-        setProgress(100);
-
-        // Update result
-        setResults((prev) =>
-          prev.map((result) =>
-            result.id === newResult.id
-              ? {
-                  ...result,
-                  status: "success",
-                  blob,
-                }
-              : result,
-          ),
-        );
-
-        toast({
-          title: "Conversion successful",
-          description: `${file.name} has been converted to ${targetFormat}`,
-        });
-      } catch (error) {
-        setResults((prev) =>
-          prev.map((result) =>
-            result.id === newResult.id
-              ? {
-                  ...result,
-                  status: "error",
-                  error: "Conversion failed. Please try again.",
-                }
-              : result,
-          ),
-        );
-
+      } else {
+        console.error("Error updating profile:", error);
         toast({
           variant: "destructive",
-          title: "Error",
-          description: "Failed to convert file. Please try again.",
+          title: "Update failed",
+          description: "Failed to update your profile. Please try again.",
         });
       }
     }
+  };
 
+  const handleFileSelect = async (files: FileList) => {
+    setIsConverting(true);
+    const userEmail = localStorage.getItem("loggedInEmail"); // Preia email-ul utilizatorului logat
+    if (!userEmail) {
+      alert("No logged-in user found.");
+      setIsConverting(false);
+      return;
+    }
+    for (const file of Array.from(files)) {
+      const convertedFilename = getConvertedFilename(file.name, targetFormat);
+
+      try {
+        // Incrementarea în backend (verifică limita)
+        await incrementFilesConverted(userEmail);
+
+        // Simularea conversiei
+        const blob = await new Promise<Blob>((resolve) =>
+          setTimeout(
+            () =>
+              resolve(new Blob([`Simulated content`], { type: "text/plain" })),
+            3000
+          )
+        );
+
+        // Adaugă fișierul în istoric doar dacă conversia a reușit
+        const newResult: ConversionResult = {
+          id: Math.random().toString(36).substr(2, 9),
+          filename: convertedFilename,
+          status: "success",
+          blob,
+        };
+
+        setResults((prev) => {
+          const updatedResults = [newResult, ...prev];
+          localStorage.setItem(
+            "conversionResults",
+            JSON.stringify(updatedResults)
+          );
+          return updatedResults;
+        });
+
+        // Afișează mesaj de succes
+        alert(
+          `Conversion successful: ${file.name} has been converted to ${targetFormat}`
+        );
+      } catch (error: any) {
+        console.error("Error during file conversion:", error);
+
+        // Afișează notificare de eroare dacă limita este depășită
+        if (error.message === "File conversion limit reached.") {
+          alert("Error: You have reached your daily file conversion limit.");
+        } else {
+          alert(`Error: Failed to convert ${file.name}.`);
+        }
+      }
+    }
     setIsConverting(false);
     setProgress(0);
   };
@@ -164,8 +179,29 @@ const FileConverter = () => {
     }
   };
 
+  const handleClearHistory = async () => {
+    try {
+      // Șterge istoricul doar din frontend (și localStorage)
+      setResults([]); // Resetează starea Conversion Results
+      localStorage.removeItem("conversionResults"); // Șterge istoricul din localStorage
+
+      // Opțional: Apel către backend pentru alte scopuri
+      const userEmail = localStorage.getItem("loggedInEmail"); // Preia email-ul utilizatorului logat
+      if (!userEmail) {
+        alert("No logged-in user found.");
+        return;
+      }
+      await clearConversionHistory(userEmail);
+
+      alert("Conversion history cleared successfully.");
+    } catch (error) {
+      console.error("Error clearing conversion history:", error);
+      alert("Failed to clear conversion history. Please try again.");
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6 bg-background min-h-screen">
+    <div className="max-w-4xl mx-auto p-6 space-y-6 bg-background min-h-screen flex flex-col items-center">
       <h1 className="text-3xl font-bold text-center mb-8">File Converter</h1>
       <DropZone onFileSelect={handleFileSelect} isActive={isConverting} />
       <FormatSelection
@@ -181,6 +217,16 @@ const FileConverter = () => {
         isActive={isConverting}
       />
       <ResultsList results={results} onDownload={handleDownload} />
+
+      {/* Adaugă un wrapper div pentru buton */}
+      <div className="flex justify-center mt-8">
+        <button
+          onClick={handleClearHistory}
+          className="bg-red-500 text-white px-6 py-3 rounded shadow-md hover:bg-red-600 transition duration-200"
+        >
+          Clear Conversion History
+        </button>
+      </div>
     </div>
   );
 };
